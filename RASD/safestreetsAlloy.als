@@ -25,23 +25,30 @@ enum Status {
 //================================================================
 //========================== SIGNATURES ============================
 
-sig Day { Value: Int }
+sig Day { Value: Int } {Value>0}
 
 sig Time { hours: Int,
 				minutes: Int
+				} {hours >0 and minutes>0}
+
+sig Person  { name: Name,
+				surname: Surname,
+				email: Email,
+				isUser: lone User,
+				isAuthority: lone Authority
 				}
 
-sig User { name: Name,
+some sig  User { name: Name,
 				surname: Surname,
 				email: Email,
 				createsReport: set Report,
 				currentlyAtPos: Position
 				}
 
-sig Authority { name: Name,
-					   surname: Surname,
-					   email: Email,
-					   fin: FIN,
+some sig  Authority { name:one Name,
+					   surname:one Surname,
+					   email:one Email,
+					   fin:one FIN,
 					   currentlyAtPos: Position,
 					   allReports: set Report
 					   }
@@ -51,7 +58,7 @@ sig Position { address: one Address,
 					  longitude: one Double
 					  }
 
-sig Report { day:  Day,
+some sig Report { day:  Day,
 					time:  Time,
 					creator: one User,
 					carModel: lone CarModel,
@@ -69,62 +76,147 @@ sig ParkingViolation extends TrafficViolation {}
 sig SpeedViolation extends TrafficViolation {}
 
 //================================================================
-//========================== CONSISTENCY ===========================
+//========================== FACT ===========================
 
-fact authority_consistency
+fact AllPersonAreOrAnAuthorityOrAUser
 {
-	all disj a1 , a2: Authority | (a1.fin != a2.fin) and (a1.email != a2.email) 
+all p : Person | (p.isUser = User and p.isAuthority = none) or (p.isAuthority = Authority and p.isUser = none)
 }
 
-assert a_consistency
+
+fact EveryUserHas2Person
 {
-	no disj a1 , a2: Authority | (a1.fin = a2.fin) and (a1.email = a2.email) 
-}
-//================================================================
-fact user_consistency
-{
- all disj  u1 , u2 : User |  (u1.name != u2.name ) and (u1.email != u2.email) and (u1.surname !=u2.surname)
+all u : User | some disj p1,p2 : Person | p1.isUser = u => p1.isAuthority = none and samePerson[p1,p2]
 }
 
-assert u_consistency
+fact EveryAuthorityHas2Person
 {
-no disj u1,u2 : User  |   (u1.name = u2.name ) and(u1.email = u2.email) and(u1.surname = u2.surname)
+all a : Authority | some disj p1,p2 : Person |  p1.isAuthority = a => p1.isUser = none and samePerson[p1,p2]
 }
 
-//check consistency
-
-//================================================================
-assert justOneReport 
+fact SameEmailImpliesSamePerson
 {
-	no disj r1,r2 : Report |  ( r1.day = r2.day) and (r1.violation = r2.violation) and (r1.carPlate = r2.carPlate) and (r1.position = r2.position)
+ all p1,p2 : Person | p1.email = p2.email => (samePerson[p1,p2]) 
 }
 
- fact justOneReportOfTheSameViolationPerDay 
+fact AllNameMustBelongToSomeone
 {
-	all disj r1,r2 : Report |  ( r1.day != r2.day) and (r1.violation != r2.violation) and (r1.carPlate != r2.carPlate) and (r1.position != r2.position)
+all n : Name | some u : User, a : Authority | (a.name = n) or (u.name = n) 
 }
 
-fact SameCarCommitsMultipleViolation
+fact AllSurameMustBelongToSomeone
 {
- all disj r1, r2 : Report | ((r1.day = r2.day)and(r1.carPlate = r2.carPlate)and(r1.violation != r2.violation)) => (r2.time.minutes - r1.time.minutes > 4)
+all s : Surname | some u : User, a : Authority | (a.surname = s) or (u.surname = s) 
 }
 
-fact justOneCreator
+fact AllEmailMustBelongToSomeone
 {
- all disj r1, r2 : Report, u1, u2 : User | (r1.creator != r2.creator)
+all e : Email | some  u : User, a : Authority | (u.email = e) or (a.email = e)
 }
-//check justOneR
-//================================================================
+
 fact noMailShared
 {
  all u : User, a : Authority | (u.email != a.email)
 }
-//================================================================
+
+fact AllAddressesMustBelongToPositions 
+{
+all a : Address | some pos : Position | pos.address = a
+}
+
+fact eachUserIsUnique
+{
+ all disj  u1 , u2 : User |  (u1.name != u2.name ) and (u1.email != u2.email) and (u1.surname !=u2.surname)
+}
+
+fact eachAuthorityIsUnique
+{
+	all disj a1 , a2: Authority | (a1.fin != a2.fin) and (a1.email != a2.email) 
+}
+
+fact authorityHaveAccessToAllTheReports
+{
+ all r : Report , a : Authority | (r in a.allReports)
+}
+
+
+ fact justOneReportOfTheSameViolationPerDayReferringToTheSameCar 
+{
+	all disj r1,r2 : Report |  ( r1.day != r2.day) and (r1.violation != r2.violation) and (r1.carPlate != r2.carPlate) and (r1.position != r2.position)
+}
+
+fact SameCarCommitsMultipleViolationAfterAtLeast5Minutes
+{
+ all disj r1, r2 : Report | ((r1.day = r2.day)and(r1.carPlate = r2.carPlate)and(r1.violation != r2.violation)) =>( ((r2.time.minutes - r1.time.minutes) > 4)or((r1.time.minutes - r1.time.minutes) > 4))
+}
+
+fact justOneCreatorForReport
+{
+ all r : Report, u : User | ( u.createsReport = r) <=> (r.creator = u)
+}
+
 fact compleatePosition 
 {
  all disj p1,p2 : Position |  (p1.address != p2.address) and (p1.latitude != p2.latitude and p1.longitude != p2.longitude)
 }
 
 
-pred show {}
-run show {}
+
+
+//================================================================
+//===========================ASSERTION=============================
+
+assert user_consistency
+{
+no disj u1,u2 : User  |   (u1.name = u2.name ) and(u1.email = u2.email) and(u1.surname = u2.surname)
+}
+
+//check user_consistency
+
+assert authority_consistency
+{
+	no disj a1 , a2: Authority | (a1.fin = a2.fin) and (a1.email = a2.email) 
+}
+
+check authority_consistency
+
+assert justOneReport
+{
+	no disj r1,r2 : Report |  ( r1.day = r2.day) and (r1.violation = r2.violation) and (r1.carPlate = r2.carPlate) and (r1.position = r2.position)
+}
+
+check justOneReport
+
+
+
+//================================================================
+//===========================PREDICATES============================
+pred samePerson[p1,p2 : Person] 
+{
+p1.email = p2.email and p1.name = p2.name and p1. surname = p2.surname
+}
+
+pred showAllReportsClosed
+{
+some r : Report | r.status= Closed
+}
+
+run showAllReportsClosed
+
+pred showAllReportsOpen
+{
+some r : Report | r.status= Open
+}
+
+run showAllReportsOpen
+
+pred showAllUserThatSendReports
+{
+some r : Report | r.creator = User
+}
+
+run showAllUserThatSendReports
+
+pred show { }
+
+run show
